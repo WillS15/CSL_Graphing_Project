@@ -8,7 +8,7 @@ from matplotlib.ticker import ScalarFormatter, FuncFormatter
 from textwrap import dedent
 
 try:
-    import standard
+    import standard as std
 except:
     ioengine_color = {
         'spdk': '#88CCEE', #Cyan
@@ -120,6 +120,20 @@ except:
     def get_label(feature):
         return legend_remap.get(feature, feature)
 
+###############################################################################
+
+def my_format(x, pos):
+    if str(x) == '0.0':
+        return str(int(x))
+    elif x < 1000:
+        return str(x)    
+    elif (x/1000) % 1 == 0:
+        return str(int(x/1000)) + 'K'
+    else:
+        return str(x/1000) + 'K'
+
+###############################################################################
+    
 def parse_name_col(df):
     """
     Parse the name column to extract more fields
@@ -185,7 +199,7 @@ parser.add_argument('-y',
                     type=str,
                     help='**Manual Plotting** y-axis')
 
-parser.add_argument('--fs',
+parser.add_argument('--figsize',
                     type=tuple,
                     default=(8, 4),
                     help='Figure size ( , )')
@@ -206,14 +220,58 @@ args.px += '_parsed'
 df = pd.read_csv('./data.csv')
 df = parse_name_col(df)
 
+df = df[df.bs == args.bs]
+
+preset = True
 if bool(args.x) ^ bool(args.y):
     raise Exception('Either use both -x and -y or neither')
 else:
     if args.x and args.y:
         x_label, y_label = args.x, args.y
+        preset = False
     elif args.preset:
         x_label, y_label = args.px, args.preset
     else:
         raise Exception('You broke something!')
+fig = plt.Figure(figsize=args.figsize, layout='constrained')
+ax = plt.gca()
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+ax.yaxis.set_major_formatter(FuncFormatter(my_format))
+
+try:
+    plt.xlabel(std.get_feature(x_label))
+    plt.ylabel(std.get_feature(y_label))
+except:
+    plt.xlabel(get_feature(x_label))
+    plt.ylabel(get_feature(y_label))
+
+try:
+    plt.xscale('log', basex=2)
+except:
+    plt.xscale('log', base=2)    
+
+for ioengine, group in df.groupby('ioengine'):
+    if preset:
+        f = group.sort_values(x_label)
+        try:
+            plt.plot(f[x_label], f[y_label], label=std.get_label(ioengine), **std.get_style(ioengine))
+        except:
+            plt.plot(f[x_label], f[y_label], label=get_label(ioengine), **get_style(ioengine))
+
+        if(y_label == 'watts_mean'):
+            plt.ylim(40, df[y_label].max() * 1.05)
+        else:
+            plt.ylim(0, df[y_label].max() * 1.05)
+
+        plt.grid(axis='both', ls='--', alpha=0.2)
+        X_ticks = np.sort(df[x_label].unique())
+        ax.xaxis.set_major_formatter(ScalarFormatter())
+        plt.xticks(X_ticks)
+        
+if args.output:
+    plt.savefig(args.output)
+else:
+    plt.show()
 
 breakpoint()
