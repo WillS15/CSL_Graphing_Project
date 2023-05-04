@@ -145,7 +145,7 @@ except:
         a = float(0.299*r) + float(0.587*g) + float(0.114*b)
         return str(round(a, 4))
 
-###############################################################################
+###############################################################################################################
 
 def my_format(x, pos):
     if str(x) == '0.0':
@@ -157,7 +157,7 @@ def my_format(x, pos):
     else:
         return str(x/1000) + 'K'
 
-###############################################################################
+###############################################################################################################
     
 def parse_name_col(df):
     """
@@ -193,6 +193,8 @@ def parse_name_col(df):
     parsed_name.loc[parsed_name['ioengine'].str.contains('spdk') == True, 'ioengine'] += ' cpoll'
 
     return df.join(parsed_name, rsuffix='_parsed')
+
+###############################################################################################################
 
 parser = argparse.ArgumentParser(description=
                                  dedent('''
@@ -334,6 +336,7 @@ for ioengine, group in df.groupby('ioengine'):
 plt.grid(axis='both', ls='--', alpha=0.2)
 X_ticks = np.sort(df[x_label].unique())
 ax.xaxis.set_major_formatter(ScalarFormatter())
+#ax.spines.bottom.set_bounds(df[x_label].min(), df[x_label].max())
 plt.xticks(X_ticks)
 plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), labelspacing=0.15, handletextpad=0.15, frameon=False, fancybox=False, shadow=False, ncol=ceil(len(df[x_label].unique()) / 2))
 
