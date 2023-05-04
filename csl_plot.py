@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter, FuncFormatter
 from textwrap import dedent
+from math import ceil
 
 try:
     import standard as std
@@ -34,6 +35,12 @@ except:
         'io_uring both': { 'lw': 1.2, 'ls': '-', 'color': '#CC6677'}, #Purple
         'io_uring spoll': { 'lw': 1.2, 'ls': '--', 'color': '#CC6677'}, #Purple
         'io_uring sqpoll': { 'lw': 1.2, 'ls': '-', 'color': '#CC6677'}, #Purple
+    }
+
+    specific_style_greyscale = {
+        'io_uring both': { 'lw': 1.2, 'ls': '-', 'color': (136/255, 34/255, 85/255)}, #Purple
+        'io_uring spoll': { 'lw': 1.2, 'ls': '--', 'color': (136/255, 34/255, 85/255)}, #Purple
+        'io_uring sqpoll': { 'lw': 1.2, 'ls': '-', 'color': (136/255, 34/255, 85/255)}, #Purple
     }
     
     feature_remap = {
@@ -90,15 +97,29 @@ except:
         #'iopj': 'Energy Efficiency',
         'cpu_total': 'cores',
     }
+
+    ioengine_rgb_colors = {
+        'spdk': (136/255, 204/255, 238/255), #Cyan
+        'io_uring': (68/255, 170/255, 153/255), #Teal
+        'pvsync2': (51/255, 34/255, 136/255), #Indigo
+        'libaio': (221/255, 204/255, 119/255), #Sand
+        'posixaio': (136/255, 34/255, 85/255), #Wine
+    }
     
-    def get_style(name):
+    def get_style(name, gscale=False):
         if name in specific_style:
-            return specific_style[name]
+            if gscale:
+                return specific_style_greyscale[name]
+            else:
+                specific_style[name]
 
         color = ioengine_color[None]
         for ioengine in ioengine_color:
             if ioengine and ioengine in name:
-                color = ioengine_color[ioengine]
+                if gscale:
+                    color = ioengine_rgb_colors[ioengine]
+                else:
+                    color = ioengine_color[ioengine]
                 break
 
         ls = completion_ls[None]
@@ -119,6 +140,10 @@ except:
 
     def get_label(feature):
         return legend_remap.get(feature, feature)
+
+    def convert_greyscale(r, g, b):
+        a = float(0.3*r) + float(0.59*g) + float(0.11*b)
+        return str(round(a, 3))
 
 ###############################################################################
 
@@ -199,10 +224,18 @@ parser.add_argument('-y',
                     type=str,
                     help='**Manual Plotting** y-axis')
 
+parser.add_argument('-g', '--grey', '--gray',
+                    type=bool,
+                    nargs='?',
+                    default=False,
+                    const=True,
+                    help='Turn image to greyscale')
+
 parser.add_argument('--figsize',
-                    type=tuple,
+                    type=float,
+                    nargs=2,
                     default=(8, 4),
-                    help='Figure size ( , )')
+                    help='Figure size')
 
 parser.add_argument('--bs',
                     type=str,
@@ -228,12 +261,15 @@ if bool(args.x) ^ bool(args.y):
 else:
     if args.x and args.y:
         x_label, y_label = args.x, args.y
+        if x_label == 'numjobs' or x_label == 'iodepth':  x_label += '_parsed'
+        if y_label == 'numjobs' or y_label == 'iodepth':  y_label += '_parsed'        
         preset = False
     elif args.preset:
         x_label, y_label = args.px, args.preset
     else:
         raise Exception('You broke something!')
-fig = plt.Figure(figsize=args.figsize, layout='constrained')
+
+fig = plt.Figure(figsize=tuple(args.figsize), layout='constrained')
 ax = plt.gca()
 ax.spines['top'].set_visible(False)
 ax.spines['right'].set_visible(False)
@@ -255,9 +291,14 @@ for ioengine, group in df.groupby('ioengine'):
     if preset:
         f = group.sort_values(x_label)
         try:
-            plt.plot(f[x_label], f[y_label], label=std.get_label(ioengine), **std.get_style(ioengine))
+            plt.plot(f[x_label], f[y_label], label=std.get_label(ioengine), **std.get_style(ioengine, args.grey))
         except:
-            plt.plot(f[x_label], f[y_label], label=get_label(ioengine), **get_style(ioengine))
+            style_grey = get_style(ioengine, args.grey)
+
+            if args.grey:
+                style_grey['color'] = convert_greyscale(*style_grey.get('color'))
+
+            plt.plot(f[x_label], f[y_label], label=get_label(ioengine), **style_grey)
 
         if(y_label == 'watts_mean'):
             plt.ylim(40, df[y_label].max() * 1.05)
@@ -268,10 +309,29 @@ for ioengine, group in df.groupby('ioengine'):
         X_ticks = np.sort(df[x_label].unique())
         ax.xaxis.set_major_formatter(ScalarFormatter())
         plt.xticks(X_ticks)
+        plt.legend(loc='lower center', bbox_to_anchor=(0.5, -0.3), labelspacing=0.15, handletextpad=0.15, frameon=False, fancybox=False, shadow=False, ncol=ceil(len(df.ioengine.unique()) / 2))
+    
+    else:
+        f = group.sort_values(x_label)
+        try:
+            plt.plot(f[x_label], f[y_label], label=std.get_label(ioengine), **std.get_style(ioengine))
+        except:
+            style_grey = get_style(ioengine, args.grey)
+
+            if args.grey:
+                style_grey['color'] = convert_greyscale(*style_grey.get('color'))
+
+            plt.plot(f[x_label], f[y_label], label=get_label(ioengine), **style_grey)
+            
+        plt.ylim(0, df[y_label].max() * 1.05)
+        plt.grid(axis='both', ls='--', alpha=0.2)
+        X_ticks = np.sort(df[x_label].unique())
+        ax.xaxis.set_major_formatter(ScalarFormatter())
+        plt.xticks(X_ticks)
+        plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.3), labelspacing=0.15, handletextpad=0.15, frameon=False, fancybox=False, shadow=False, ncol=ceil(len(df.ioengine.unique()) / 2))
         
 if args.output:
-    plt.savefig(args.output)
+    plt.savefig(args.output, transparent=True)
 else:
     plt.show()
 
-breakpoint()
