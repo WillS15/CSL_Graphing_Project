@@ -142,8 +142,8 @@ except:
         return legend_remap.get(feature, feature)
 
     def convert_greyscale(r, g, b):
-        a = float(0.3*r) + float(0.59*g) + float(0.11*b)
-        return str(round(a, 3))
+        a = float(0.299*r) + float(0.587*g) + float(0.114*b)
+        return str(round(a, 4))
 
 ###############################################################################
 
@@ -196,8 +196,7 @@ def parse_name_col(df):
 
 parser = argparse.ArgumentParser(description=
                                  dedent('''
-                                 TEST
-
+                                 CSL single figure graphing script
                                  '''))
 
 parser.add_argument('data_file',
@@ -232,7 +231,7 @@ parser.add_argument('-g', '--grey', '--gray',
                     help='Turn image to greyscale')
 
 parser.add_argument('--figsize',
-                    type=float,
+                    type=int,
                     nargs=2,
                     default=(8, 4),
                     help='Figure size')
@@ -269,11 +268,12 @@ else:
     else:
         raise Exception('You broke something!')
 
-fig = plt.Figure(figsize=tuple(args.figsize), layout='constrained')
+fig = plt.Figure(figsize=tuple(args.figsize))
 ax = plt.gca()
 ax.spines['top'].set_visible(False)
 ax.spines['right'].set_visible(False)
 ax.yaxis.set_major_formatter(FuncFormatter(my_format))
+Markers = {'spdk cpoll':'$♦$', 'pvsync2 cpoll':'$■$', 'libaio int':'$+$', 'pvsync2 int':'$□$', 'io_uring int':'$△$', 'io_uring cpoll':'$▲$', 'io_uring spoll':'$⃝$', 'io_uring both':'o', 'posixaio int':'x'}
 
 try:
     plt.xlabel(std.get_feature(x_label))
@@ -291,47 +291,55 @@ for ioengine, group in df.groupby('ioengine'):
     if preset:
         f = group.sort_values(x_label)
         try:
-            plt.plot(f[x_label], f[y_label], label=std.get_label(ioengine), **std.get_style(ioengine, args.grey))
+            plt.plot(f[x_label], f[y_label], marker=Markers.get(ioengine), markersize=4, label=std.get_label(ioengine), **std.get_style(ioengine, args.grey))
         except:
-            style_grey = get_style(ioengine, args.grey)
+            try:
+                style_grey = std.get_style(ioengine, args.grey)
+            except:
+                style_grey = get_style(ioengine, args.grey)
 
             if args.grey:
-                style_grey['color'] = convert_greyscale(*style_grey.get('color'))
+                try:
+                    style_grey['color'] = std.convert_greyscale(*style_grey.get('color'))
+                except:
+                    style_grey['color'] = convert_greyscale(*style_grey.get('color'))
 
-            plt.plot(f[x_label], f[y_label], label=get_label(ioengine), **style_grey)
+            plt.plot(f[x_label], f[y_label], marker=Markers.get(ioengine), markersize=4, label=get_label(ioengine), **style_grey)
 
         if(y_label == 'watts_mean'):
             plt.ylim(40, df[y_label].max() * 1.05)
         else:
             plt.ylim(0, df[y_label].max() * 1.05)
 
-        plt.grid(axis='both', ls='--', alpha=0.2)
-        X_ticks = np.sort(df[x_label].unique())
-        ax.xaxis.set_major_formatter(ScalarFormatter())
-        plt.xticks(X_ticks)
-        plt.legend(loc='lower center', bbox_to_anchor=(0.5, -0.3), labelspacing=0.15, handletextpad=0.15, frameon=False, fancybox=False, shadow=False, ncol=ceil(len(df.ioengine.unique()) / 2))
-    
     else:
         f = group.sort_values(x_label)
         try:
-            plt.plot(f[x_label], f[y_label], label=std.get_label(ioengine), **std.get_style(ioengine))
+            plt.plot(f[x_label], f[y_label], marker=Markers.get(ioengine), markersize=4, label=std.get_label(ioengine), **std.get_style(ioengine))
         except:
-            style_grey = get_style(ioengine, args.grey)
+            try:
+                style_grey = std.get_style(ioengine, args.grey)
+            except:
+                style_grey = get_style(ioengine, args.grey)
 
             if args.grey:
-                style_grey['color'] = convert_greyscale(*style_grey.get('color'))
-
-            plt.plot(f[x_label], f[y_label], label=get_label(ioengine), **style_grey)
+                try:
+                    style_grey['color'] = std.convert_greyscale(*style_grey.get('color'))
+                except:
+                    style_grey['color'] = convert_greyscale(*style_grey.get('color'))
+            
+            plt.plot(f[x_label], f[y_label], marker=Markers.get(ioengine), markersize=4, label=get_label(ioengine), **style_grey)
             
         plt.ylim(0, df[y_label].max() * 1.05)
-        plt.grid(axis='both', ls='--', alpha=0.2)
-        X_ticks = np.sort(df[x_label].unique())
-        ax.xaxis.set_major_formatter(ScalarFormatter())
-        plt.xticks(X_ticks)
-        plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.3), labelspacing=0.15, handletextpad=0.15, frameon=False, fancybox=False, shadow=False, ncol=ceil(len(df.ioengine.unique()) / 2))
-        
+
+plt.grid(axis='both', ls='--', alpha=0.2)
+X_ticks = np.sort(df[x_label].unique())
+ax.xaxis.set_major_formatter(ScalarFormatter())
+plt.xticks(X_ticks)
+plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), labelspacing=0.15, handletextpad=0.15, frameon=False, fancybox=False, shadow=False, ncol=ceil(len(df[x_label].unique()) / 2))
+
+plt.tight_layout()
+
 if args.output:
     plt.savefig(args.output, transparent=True)
 else:
     plt.show()
-
