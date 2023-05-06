@@ -8,6 +8,7 @@ from matplotlib.ticker import ScalarFormatter, FuncFormatter
 from textwrap import dedent
 from math import ceil
 
+#Imports either a standard file OR uses a default standard file
 try:
     import standard as std
 except:
@@ -147,6 +148,7 @@ except:
 
 ###############################################################################################################
 
+#Formats y-axis ticks; ex. it turns '400000 into 400K'
 def my_format(x, pos):
     if str(x) == '0.0':
         return str(int(x))
@@ -158,7 +160,8 @@ def my_format(x, pos):
         return str(x/1000) + 'K'
 
 ###############################################################################################################
-    
+
+#Parses the dataframe
 def parse_name_col(df):
     """
     Parse the name column to extract more fields
@@ -214,7 +217,7 @@ parser.add_argument('-p', '--preset',
 parser.add_argument('-px',
                     type=str,
                     default='numjobs',
-                    choices=['numjobs', 'ioengine'],
+                    choices=['numjobs', 'iodepth'],
                     help='What to plot on preset\'s x-axis')
 
 parser.add_argument('-x',
@@ -230,13 +233,13 @@ parser.add_argument('-g', '--grey', '--gray',
                     nargs='?',
                     default=False,
                     const=True,
-                    help='Turn image to greyscale')
+                    help='Converts and plots as greyscale')
 
 parser.add_argument('--figsize',
                     type=int,
                     nargs=2,
                     default=(8, 4),
-                    help='Figure size')
+                    help='Figure size (w, h)')
 
 parser.add_argument('--bs',
                     type=str,
@@ -244,23 +247,52 @@ parser.add_argument('--bs',
                     choices=['4K', '16K', '128K'],
                     help='Filter by block size')
 
+parser.add_argument('-c', '--columns',
+                    default=False,
+                    const=True,
+                    action='store_const',
+                    help='Print out unique post-parsed columns of the DataFrame and do nothing else')
+
+parser.add_argument('-d', '--debug',
+                    default=False,
+                    const=True,
+                    action='store_const',
+                    help='Enter debugging after parsing the DataFrame')
+
 parser.add_argument('-o', '--output',
                     type=str,
-                    help='Path to output file')
+                    help='Save as <path + filename>')
 
+#Parse CLI Arguments
 args = parser.parse_args()
 args.px += '_parsed'
 
+#Read and parse the dataset
 df = pd.read_csv('./data.csv')
 df = parse_name_col(df)
 
+#Printing columns
+if args.columns:
+    for x in np.unique(df.columns.values):
+        print(x)
+    exit()
+elif args.debug:
+    breakpoint()
+
+#Filter by blocksize
 df = df[df.bs == args.bs]
 
+#Safety Checks
 preset = True
 if bool(args.x) ^ bool(args.y):
     raise Exception('Either use both -x and -y or neither')
 else:
     if args.x and args.y:
+        if args.x not in df.columns.values:
+            raise Exception('Chosen \'-x\' value is not a column in the supplied dataset.')
+        elif args.y not in df.columns.values:
+            raise Exception('Chosen \'-y\' value is not a column in the supplied dataset.')
+
         x_label, y_label = args.x, args.y
         if x_label == 'numjobs' or x_label == 'iodepth':  x_label += '_parsed'
         if y_label == 'numjobs' or y_label == 'iodepth':  y_label += '_parsed'        
@@ -270,6 +302,19 @@ else:
     else:
         raise Exception('You broke something!')
 
+def no_unique_values(col):
+    tmp = col.to_numpy()
+    return (tmp[0] == tmp).all()
+
+tmp_col = df[df['ioengine'] == np.unique(df['ioengine'])[0]][x_label]
+
+#More Safety Checks
+if not (len(tmp_col) > 1):
+    raise Exception('The chosen \'-x\' has less than 2 values for an ioengine in the DataFrame')
+elif no_unique_values(tmp_col):
+    raise Exception('The chosen \'-x\' has no unique values for an ioengine in the DataFrame')
+    
+#Beginning of the graph setup
 fig = plt.Figure(figsize=tuple(args.figsize))
 ax = plt.gca()
 ax.spines['top'].set_visible(False)
@@ -289,6 +334,7 @@ try:
 except:
     plt.xscale('log', base=2)    
 
+#Plotting
 for ioengine, group in df.groupby('ioengine'):
     if preset:
         f = group.sort_values(x_label)
@@ -333,6 +379,7 @@ for ioengine, group in df.groupby('ioengine'):
             
         plt.ylim(0, df[y_label].max() * 1.05)
 
+#Adding final graph settings
 plt.grid(axis='both', ls='--', alpha=0.2)
 X_ticks = np.sort(df[x_label].unique())
 ax.xaxis.set_major_formatter(ScalarFormatter())
