@@ -309,7 +309,7 @@ def no_unique_values(col):
 tmp_col = df[df['ioengine'] == np.unique(df['ioengine'])[0]][x_label]
 
 #More Safety Checks
-if not (len(tmp_col) > 1):
+if len(tmp_col) < 2:
     raise Exception('The chosen \'-x\' has less than 2 values for an ioengine in the DataFrame')
 elif no_unique_values(tmp_col):
     raise Exception('The chosen \'-x\' has no unique values for an ioengine in the DataFrame')
@@ -336,47 +336,23 @@ except:
 
 #Plotting
 for ioengine, group in df.groupby('ioengine'):
-    if preset:
-        f = group.sort_values(x_label)
-        try:
-            plt.plot(f[x_label], f[y_label], marker=Markers.get(ioengine), markersize=4, label=std.get_label(ioengine), **std.get_style(ioengine, args.grey))
-        except:
-            try:
-                style_grey = std.get_style(ioengine, args.grey)
-            except:
-                style_grey = get_style(ioengine, args.grey)
+    f = group.sort_values(x_label)
+    try:
+        style_grey = std.get_style(ioengine, args.grey)
+        if args.grey:
+            style_grey['color'] = std.convert_greyscale(*style_grey.get('color'))
+            
+        plt.plot(f[x_label], f[y_label], marker=Markers.get(ioengine), markersize=4, label=std.get_label(ioengine), **std.get_style(ioengine, args.grey))
+    except:
+        style_grey = get_style(ioengine, args.grey)
+        if args.grey:
+            style_grey['color'] = convert_greyscale(*style_grey.get('color'))
 
-            if args.grey:
-                try:
-                    style_grey['color'] = std.convert_greyscale(*style_grey.get('color'))
-                except:
-                    style_grey['color'] = convert_greyscale(*style_grey.get('color'))
-
-            plt.plot(f[x_label], f[y_label], marker=Markers.get(ioengine), markersize=4, label=get_label(ioengine), **style_grey)
-
-        if(y_label == 'watts_mean'):
-            plt.ylim(40, df[y_label].max() * 1.05)
-        else:
-            plt.ylim(0, df[y_label].max() * 1.05)
-
+        plt.plot(f[x_label], f[y_label], marker=Markers.get(ioengine), markersize=4, label=get_label(ioengine), **style_grey)
+        
+    if(y_label == 'watts_mean'):
+        plt.ylim(40, df[y_label].max() * 1.05)
     else:
-        f = group.sort_values(x_label)
-        try:
-            plt.plot(f[x_label], f[y_label], marker=Markers.get(ioengine), markersize=4, label=std.get_label(ioengine), **std.get_style(ioengine))
-        except:
-            try:
-                style_grey = std.get_style(ioengine, args.grey)
-            except:
-                style_grey = get_style(ioengine, args.grey)
-
-            if args.grey:
-                try:
-                    style_grey['color'] = std.convert_greyscale(*style_grey.get('color'))
-                except:
-                    style_grey['color'] = convert_greyscale(*style_grey.get('color'))
-            
-            plt.plot(f[x_label], f[y_label], marker=Markers.get(ioengine), markersize=4, label=get_label(ioengine), **style_grey)
-            
         plt.ylim(0, df[y_label].max() * 1.05)
 
 #Adding final graph settings
