@@ -278,7 +278,7 @@ args = parser.parse_args()
 args.px += '_parsed'
 
 #Read and parse the dataset
-df = pd.read_csv('./data.csv')
+df = pd.read_csv(args.data_file)
 df = parse_name_col(df)
 
 #Printing columns
