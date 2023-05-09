@@ -279,7 +279,7 @@ parser.add_argument('-g', '--grey', '--gray',
 parser.add_argument('--figsize',
                     type=int,
                     nargs=2,
-                    default=(8, 4),
+                    default=(9, 4.5),
                     help='Figure size (w, h)')
 
 parser.add_argument('--bs1',
@@ -299,6 +299,21 @@ parser.add_argument('--bs3',
                     default='4K',
                     choices=['4K', '16K', '128K'],
                     help='Filter by block size (3rd Plot)')
+
+parser.add_argument('--subplots-wspace',
+                    type=float,
+                    default=0.4,
+                    help='Sets the subplot\'s wspace')
+
+parser.add_argument('--legend-loc',
+                    type=str,
+                    default='upper center',
+                    help='Sets the legend\s loc parameter')
+
+parser.add_argument('--legend-bbox-to-anchor',
+                    type=tuple,
+                    default=(0.5, -0.15),
+                    help='Sets the legend\s bbox_to_anchor parameter')
 
 parser.add_argument('-c', '--columns',
                     default=False,
@@ -471,21 +486,24 @@ for x in range(3):
 axes[0].grid(axis='both', ls='--', alpha=0.2)
 axes[1].grid(axis='both', ls='--', alpha=0.2)
 axes[2].grid(axis='both', ls='--', alpha=0.2)
+
 X_ticks1 = np.sort(dfs[0][xlabel[0]].unique())
 X_ticks2 = np.sort(dfs[1][xlabel[1]].unique())
 X_ticks3 = np.sort(dfs[2][xlabel[2]].unique())
+
 axes[0].xaxis.set_major_formatter(ScalarFormatter())
 axes[1].xaxis.set_major_formatter(ScalarFormatter())
 axes[2].xaxis.set_major_formatter(ScalarFormatter())
 #ax.spines.bottom.set_bounds(df[x_label].min(), df[x_label].max())
+
 axes[0].set_xticks(X_ticks1)
 axes[1].set_xticks(X_ticks2)
 axes[2].set_xticks(X_ticks3)
 
-axes[1].legend(loc='lower center', bbox_to_anchor=(0.5, -0.45), labelspacing=0.15, handletextpad=0.15, frameon=False, fancybox=False, shadow=False, ncol=ceil(len(np.unique(df['ioengine'])) / 2)) #THIS WILL EVENTUALLY BE A PROBLEM DUE TO XLABEL
+axes[1].legend(loc=args.legend_loc, bbox_to_anchor=args.legend_bbox_to_anchor, labelspacing=0.15, handletextpad=0.15, frameon=False, fancybox=False, shadow=False, ncol=ceil(len(np.unique(df['ioengine'])) / 2))
 
 plt.tight_layout()
-plt.subplots_adjust(wspace=0.5)
+plt.subplots_adjust(wspace=args.subplots_wspace)
 
 if args.output:
     plt.savefig(args.output, bbox_inches='tight', transparent=True)

@@ -259,7 +259,7 @@ parser.add_argument('-g', '--grey', '--gray',
 parser.add_argument('--figsize',
                     type=int,
                     nargs=2,
-                    default=(8, 4),
+                    default=(9, 4.5),
                     help='Figure size (w, h)')
 
 parser.add_argument('--bs1',
@@ -273,6 +273,21 @@ parser.add_argument('--bs2',
                     default='4K',
                     choices=['4K', '16K', '128K'],
                     help='Filter by block size')
+
+parser.add_argument('--subplots-wspace',
+                    type=float,
+                    default=0.26,
+                    help='Sets the subplot\'s wspace')
+
+parser.add_argument('--legend-loc',
+                    type=str,
+                    default='upper center',
+                    help='Sets the legend\s loc parameter')
+
+parser.add_argument('--legend-bbox-to-anchor',
+                    type=tuple,
+                    default=(0.5, 0.0),
+                    help='Sets the legend\s bbox_to_anchor parameter')
 
 parser.add_argument('-c', '--columns',
                     default=False,
@@ -425,10 +440,10 @@ axes[1].xaxis.set_major_formatter(ScalarFormatter())
 axes[0].set_xticks(X_ticks1)
 axes[1].set_xticks(X_ticks2)
 
-fig.legend(*axes[0].get_legend_handles_labels(), loc='lower center', bbox_to_anchor=(0.5, -0.12), labelspacing=0.15, handletextpad=0.15, frameon=False, fancybox=False, shadow=False, ncol=ceil(len(np.unique(df['ioengine'])) / 2)) #THIS WILL EVENTUALLY BE A PROBLEM DUE TO XLABEL
+fig.legend(*axes[0].get_legend_handles_labels(), loc=args.legend_loc, bbox_to_anchor=args.legend_bbox_to_anchor, labelspacing=0.15, handletextpad=0.15, frameon=False, fancybox=False, shadow=False, ncol=ceil(len(np.unique(df['ioengine'])) / 2))
 
 plt.tight_layout()
-plt.subplots_adjust(wspace=0.2)
+plt.subplots_adjust(wspace=args.subplots_wspace)
 
 if args.output:
     plt.savefig(args.output, bbox_inches='tight', transparent=True)

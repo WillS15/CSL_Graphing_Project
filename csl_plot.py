@@ -247,6 +247,16 @@ parser.add_argument('--bs',
                     choices=['4K', '16K', '128K'],
                     help='Filter by block size')
 
+parser.add_argument('--legend-loc',
+                    type=str,
+                    default='upper center',
+                    help='Sets the legend\s loc parameter')
+
+parser.add_argument('--legend-bbox-to-anchor',
+                    type=tuple,
+                    default=(0.5, -0.15),
+                    help='Sets the legend\s bbox_to_anchor parameter')
+
 parser.add_argument('-c', '--columns',
                     default=False,
                     const=True,
@@ -361,7 +371,7 @@ X_ticks = np.sort(df[x_label].unique())
 ax.xaxis.set_major_formatter(ScalarFormatter())
 #ax.spines.bottom.set_bounds(df[x_label].min(), df[x_label].max())
 plt.xticks(X_ticks)
-plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), labelspacing=0.15, handletextpad=0.15, frameon=False, fancybox=False, shadow=False, ncol=ceil(len(df[x_label].unique()) / 2))
+plt.legend(loc=args.legend_loc, bbox_to_anchor=args.legend_bbox_to_anchor, labelspacing=0.15, handletextpad=0.15, frameon=False, fancybox=False, shadow=False, ncol=ceil(len(np.unique(df['ioengine'])) / 3))
 
 plt.tight_layout()
 
