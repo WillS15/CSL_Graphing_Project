@@ -12,6 +12,8 @@ from math import ceil
 try:
     import standard as std
 except:
+    Markers = {'spdk cpoll':'$♦$', 'pvsync2 cpoll':'$■$', 'libaio int':'$+$', 'pvsync2 int':'$□$', 'io_uring int':'$△$', 'io_uring cpoll':'$▲$', 'io_uring spoll':'$⃝$', 'io_uring both':'o', 'posixaio int':'x'}
+    
     ioengine_color = {
         'spdk': '#88CCEE', #Cyan
         'io_uring': '#44AA99', #Teal
@@ -48,9 +50,9 @@ except:
         #'read_lat_mean': 'Read latency (\u03BCs)',
         'read_lat_mean': 'Latency (\u03BCs)',
         #'iodepth': 'IO depth (number of threads)',
-        'iodepth': 'Number of Tenants',
+        'iodepth': 'Number of Threads',
         'numjobs': 'IO Depth',
-        'numjobs_parsed': 'Number of Tenants',
+        'numjobs_parsed': 'Number of Threads',
         'iodepth_parsed': 'IO Depth',
         'bs': 'Request size',
         'iops': 'IOPS',
@@ -112,7 +114,7 @@ except:
             if gscale:
                 return specific_style_greyscale[name]
             else:
-                specific_style[name]
+                return specific_style[name]
 
         color = ioengine_color[None]
         for ioengine in ioengine_color:
@@ -151,9 +153,9 @@ except:
 #Formats y-axis ticks; ex. it turns '400000 into 400K'
 def my_format(x, pos):
     if str(x) == '0.0':
-        return str(int(x))
+        return '0'
     elif x < 1000:
-        return str(x)    
+        return str(int(x))
     elif (x/1000) % 1 == 0:
         return str(int(x/1000)) + 'K'
     else:
@@ -199,9 +201,9 @@ def parse_name_col(df):
 
 ###############################################################################################################
 
-parser = argparse.ArgumentParser(description=
-                                 dedent('''
-                                 CSL single figure graphing script
+parser = argparse.ArgumentParser(prog='CSL Single Plot Generator',
+                                 description=dedent('''
+                                 Takes a <data_file> from the aggregate.py script output and graphs a single plot based on preset or manual behavior.
                                  '''))
 
 parser.add_argument('data_file',
@@ -220,6 +222,13 @@ parser.add_argument('-px',
                     choices=['numjobs', 'iodepth'],
                     help='What to plot on preset\'s x-axis')
 
+parser.add_argument('-fs',
+                    type=str,
+                    default='xfs',
+                    nargs='?',                    
+                    choices=['xfs', 'ext4', 'f2fs'],
+                    help='Which filesystem specific data is being graphed')
+
 parser.add_argument('-x',
                     type=str,
                     help='**Manual Plotting** x-axis')
@@ -234,28 +243,6 @@ parser.add_argument('-g', '--grey', '--gray',
                     default=False,
                     const=True,
                     help='Converts and plots as greyscale')
-
-parser.add_argument('--figsize',
-                    type=int,
-                    nargs=2,
-                    default=(8, 4),
-                    help='Figure size (w, h)')
-
-parser.add_argument('--bs',
-                    type=str,
-                    default='4K',
-                    choices=['4K', '16K', '128K'],
-                    help='Filter by block size')
-
-parser.add_argument('--legend-loc',
-                    type=str,
-                    default='upper center',
-                    help='Sets the legend\s loc parameter')
-
-parser.add_argument('--legend-bbox-to-anchor',
-                    type=tuple,
-                    default=(0.5, -0.15),
-                    help='Sets the legend\s bbox_to_anchor parameter')
 
 parser.add_argument('-c', '--columns',
                     default=False,
@@ -273,9 +260,49 @@ parser.add_argument('-o', '--output',
                     type=str,
                     help='Save as <path + filename>')
 
+parser.add_argument('--figsize',
+                    type=int,
+                    nargs=2,
+                    default=(8, 4),
+                    help='Figure size (w, h)')
+
+parser.add_argument('--bs',
+                    type=str,
+                    default='4K',
+                    choices=['4K', '16K', '128K'],
+                    help='Filter by block size')
+
+parser.add_argument('-t',
+                    type=str,
+                    help='Title of plot')
+
+parser.add_argument('--legend-loc',
+                    type=str,
+                    default='upper center',
+                    help='Sets the legend\s loc parameter (default=\'upper center\')')
+
+parser.add_argument('--legend-bbox-to-anchor',
+                    type=tuple,
+                    default=(0.5, -0.15),
+                    help='Sets the legend\s bbox_to_anchor parameter (default=(0.5, -0.15))')
+
+parser.add_argument('--aspect-ratio',
+                    type=str,
+                    default='None',
+                    help='Sets subplot\'s aspect ratio (ex: \'1/2\' or \'0.5\')')
+
 #Parse CLI Arguments
 args = parser.parse_args()
 args.px += '_parsed'
+
+try:
+    if args.aspect_ratio == 'None':
+        args.aspect_ratio = None
+    else:
+        args.aspect_ratio = float(eval(args.aspect_ratio))
+except:
+    raise Exception(f'Bad input to args.aspect-ratio: \"{args.aspect_ratio}\"')
+
 
 #Read and parse the dataset
 df = pd.read_csv(args.data_file)
@@ -289,8 +316,9 @@ if args.columns:
 elif args.debug:
     breakpoint()
 
-#Filter by blocksize
+#Filters
 df = df[df.bs == args.bs]
+df = df[df.fs == args.fs]
 
 #Safety Checks
 preset = True
@@ -329,8 +357,8 @@ fig = plt.Figure(figsize=tuple(args.figsize))
 ax = plt.gca()
 ax.spines['top'].set_visible(False)
 ax.spines['right'].set_visible(False)
+ax.set_box_aspect(args.aspect_ratio)
 ax.yaxis.set_major_formatter(FuncFormatter(my_format))
-Markers = {'spdk cpoll':'$♦$', 'pvsync2 cpoll':'$■$', 'libaio int':'$+$', 'pvsync2 int':'$□$', 'io_uring int':'$△$', 'io_uring cpoll':'$▲$', 'io_uring spoll':'$⃝$', 'io_uring both':'o', 'posixaio int':'x'}
 
 try:
     plt.xlabel(std.get_feature(x_label))
@@ -351,14 +379,21 @@ for ioengine, group in df.groupby('ioengine'):
         style_grey = std.get_style(ioengine, args.grey)
         if args.grey:
             style_grey['color'] = std.convert_greyscale(*style_grey.get('color'))
+
+        try:
+            plt.plot(f[x_label], f[y_label], marker=std.Markers.get(ioengine), markersize=4, label=std.get_label(ioengine), **std.get_style(ioengine, args.grey))
+        except:
+            plt.plot(f[x_label], f[y_label], marker=Markers.get(ioengine), markersize=4, label=std.get_label(ioengine), **std.get_style(ioengine, args.grey))
             
-        plt.plot(f[x_label], f[y_label], marker=Markers.get(ioengine), markersize=4, label=std.get_label(ioengine), **std.get_style(ioengine, args.grey))
     except:
         style_grey = get_style(ioengine, args.grey)
         if args.grey:
             style_grey['color'] = convert_greyscale(*style_grey.get('color'))
 
-        plt.plot(f[x_label], f[y_label], marker=Markers.get(ioengine), markersize=4, label=get_label(ioengine), **style_grey)
+        try:
+            plt.plot(f[x_label], f[y_label], marker=std.Markers.get(ioengine), markersize=4, label=get_label(ioengine), **style_grey)
+        except:
+            plt.plot(f[x_label], f[y_label], marker=Markers.get(ioengine), markersize=4, label=get_label(ioengine), **style_grey)
         
     if(y_label == 'watts_mean'):
         plt.ylim(40, df[y_label].max() * 1.05)
@@ -367,10 +402,14 @@ for ioengine, group in df.groupby('ioengine'):
 
 #Adding final graph settings
 plt.grid(axis='both', ls='--', alpha=0.2)
-X_ticks = np.sort(df[x_label].unique())
+x_ticks = np.sort(df[x_label].unique())
 ax.xaxis.set_major_formatter(ScalarFormatter())
 #ax.spines.bottom.set_bounds(df[x_label].min(), df[x_label].max())
-plt.xticks(X_ticks)
+plt.xticks(x_ticks)
+
+if args.t:
+    plt.title(args.t)
+
 plt.legend(loc=args.legend_loc, bbox_to_anchor=args.legend_bbox_to_anchor, labelspacing=0.15, handletextpad=0.15, frameon=False, fancybox=False, shadow=False, ncol=ceil(len(np.unique(df['ioengine'])) / 3))
 
 plt.tight_layout()

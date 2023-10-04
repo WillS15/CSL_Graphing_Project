@@ -12,6 +12,8 @@ from math import ceil
 try:
     import standard as std
 except:
+    Markers = {'spdk cpoll':'$♦$', 'pvsync2 cpoll':'$■$', 'libaio int':'$+$', 'pvsync2 int':'$□$', 'io_uring int':'$△$', 'io_uring cpoll':'$▲$', 'io_uring spoll':'$⃝$', 'io_uring both':'o', 'posixaio int':'x'}
+    
     ioengine_color = {
         'spdk': '#88CCEE', #Cyan
         'io_uring': '#44AA99', #Teal
@@ -48,9 +50,9 @@ except:
         #'read_lat_mean': 'Read latency (\u03BCs)',
         'read_lat_mean': 'Latency (\u03BCs)',
         #'iodepth': 'IO depth (number of threads)',
-        'iodepth': 'Number of Tenants',
+        'iodepth': 'Number of Threads',
         'numjobs': 'IO Depth',
-        'numjobs_parsed': 'Number of Tenants',
+        'numjobs_parsed': 'Number of Threads',
         'iodepth_parsed': 'IO Depth',
         'bs': 'Request size',
         'iops': 'IOPS',
@@ -109,11 +111,10 @@ except:
     
     def get_style(name, gscale=False):
         if name in specific_style:
-            from copy import copy
             if gscale:
-                return copy(specific_style_greyscale[name])
+                return specific_style_greyscale.get(name)
             else:
-                copy(specific_style[name])
+                return specific_style.get(name)
 
         color = ioengine_color[None]
         for ioengine in ioengine_color:
@@ -129,7 +130,7 @@ except:
             if ls and ls in name:
                 ls = completion_ls[ls]
                 break
-        return { 'lw': 1.2, 'ls': ls, 'color': color, }
+        return { 'lw': 1.2, 'ls': ls, 'color': color}
 
     def get_feature_unit(feature):
         return feature_unit.get(feature, '')
@@ -152,9 +153,9 @@ except:
 #Formats y-axis ticks; ex. it turns '400000 into 400K'
 def my_format(x, pos):
     if str(x) == '0.0':
-        return str(int(x))
+        return '0'
     elif x < 1000:
-        return str(x)    
+        return str(int(x))
     elif (x/1000) % 1 == 0:
         return str(int(x/1000)) + 'K'
     else:
@@ -200,9 +201,10 @@ def parse_name_col(df):
 
 ###############################################################################################################
 
-parser = argparse.ArgumentParser(description=
+parser = argparse.ArgumentParser(prog='CSL Single Plot Generator',
+                                 description=
                                  dedent('''
-                                 CSL double figure graphing script
+                                 Takes a <data_file> from the aggregate.py script output and graphs a triple plot based on preset or manual behavior.
                                  '''))
 
 parser.add_argument('data_file',
@@ -245,6 +247,27 @@ parser.add_argument('-px3',
                     choices=['numjobs', 'iodepth'],
                     help='What to plot on preset\'s x-axis (3rd Plot)')
 
+parser.add_argument('-fs1',
+                    type=str,
+                    default='xfs',
+                    nargs='?',
+                    choices=['xfs', 'ext4', 'f2fs'],
+                    help='Which filesystem specific data is being graphed (1st Plot)')
+
+parser.add_argument('-fs2',
+                    type=str,
+                    default='xfs',
+                    nargs='?',
+                    choices=['xfs', 'ext4', 'f2fs'],
+                    help='Which filesystem specific data is being graphed (2nd Plot)')
+
+parser.add_argument('-fs3',
+                    type=str,
+                    default='xfs',
+                    nargs='?',
+                    choices=['xfs', 'ext4', 'f2fs'],
+                    help='Which filesystem specific data is being graphed (3rd Plot)')
+
 parser.add_argument('-x1',
                     type=str,
                     help='**Manual Plotting** x-axis (1st Plot)')
@@ -276,6 +299,22 @@ parser.add_argument('-g', '--grey', '--gray',
                     const=True,
                     help='Converts and plots as greyscale')
 
+parser.add_argument('-c', '--columns',
+                    default=False,
+                    const=True,
+                    action='store_const',
+                    help='Print out unique post-parsed columns of the DataFrame and do nothing else')
+
+parser.add_argument('-d', '--debug',
+                    default=False,
+                    const=True,
+                    action='store_const',
+                    help='Enter debugging after parsing the DataFrame')
+
+parser.add_argument('-o', '--output',
+                    type=str,
+                    help='Save as <path + filename>')
+
 parser.add_argument('--figsize',
                     type=int,
                     nargs=2,
@@ -300,48 +339,57 @@ parser.add_argument('--bs3',
                     choices=['4K', '16K', '128K'],
                     help='Filter by block size (3rd Plot)')
 
-parser.add_argument('--subplots-wspace',
-                    type=float,
-                    default=0.4,
-                    help='Sets the subplot\'s wspace')
+parser.add_argument('-t1',
+                    type=str,
+                    help='Title (1st Plot)')
+
+parser.add_argument('-t2',
+                    type=str,
+                    help='Title (2nd Plot)')
+
+parser.add_argument('-t3',
+                    type=str,
+                    help='Title (3rd Plot)')
 
 parser.add_argument('--legend-loc',
                     type=str,
                     default='upper center',
-                    help='Sets the legend\s loc parameter')
+                    help='Sets the legend\s loc parameter ... default=\'upper center\'')
+
+parser.add_argument('--subplots-wspace',
+                    type=float,
+                    default=0.4,
+                    help='Sets the subplot\'s wspace ... default=0.4')
 
 parser.add_argument('--legend-bbox-to-anchor',
                     type=tuple,
                     default=(0.5, -0.15),
-                    help='Sets the legend\s bbox_to_anchor parameter')
+                    help='Sets the legend\s bbox_to_anchor parameter ... default=(0.5, -0.15)')
 
-parser.add_argument('-c', '--columns',
-                    default=False,
-                    const=True,
-                    action='store_const',
-                    help='Print out unique post-parsed columns of the DataFrame and do nothing else')
-
-parser.add_argument('-d', '--debug',
-                    default=False,
-                    const=True,
-                    action='store_const',
-                    help='Enter debugging after parsing the DataFrame')
-
-parser.add_argument('-o', '--output',
+parser.add_argument('--aspect-ratio',
                     type=str,
-                    help='Save as <path + filename>')
+                    default='None',
+                    help='Sets subplot\'s aspect ratio (ex: \'1/2\' or \'0.5\')')
 
-#Parse CLI Arguments
+### Parse CLI Arguments
 args = parser.parse_args()
 args.px1 += '_parsed'
 args.px2 += '_parsed'
 args.px3 += '_parsed'
 
-#Read and parse the dataset
+try:
+    if args.aspect_ratio == 'None':
+        args.aspect_ratio = None
+    else:
+        args.aspect_ratio = float(eval(args.aspect_ratio))
+except:
+    raise Exception(f'Bad input to args.aspect-ratio: \"{args.aspect_ratio}\"')
+
+### Read and parse the dataset
 df = pd.read_csv(args.data_file)
 df = parse_name_col(df)
 
-#Printing columns
+### Printing columns
 if args.columns:
     for x in np.unique(df.columns.values):
         print(x)
@@ -349,13 +397,16 @@ if args.columns:
 elif args.debug:
     breakpoint()
 
-#Filter by blocksize
-dfs = [df[df.bs == args.bs1], df[df.bs == args.bs2], df[df.bs == args.bs3]]
+### Filter by bs and fs
+dfs = []
+for bs, fs in [(args.bs1, args.fs1), (args.bs2, args.fs2), (args.bs3, args.fs3)]:
+    filtered_indices = [list(df.bs == bs)[x] and list(df.fs == fs)[x] for x in range(len(df))]
+    dfs.append(df.loc[filtered_indices].reset_index(drop=True))
 
 xlabel = [None] * 3
 ylabel = [None] * 3
 
-#Safety Checks
+### Safety Checks
 preset1 = True
 preset2 = True
 preset3 = True
@@ -413,7 +464,7 @@ tmp_col1 = dfs[0][dfs[0]['ioengine'] == np.unique(dfs[0]['ioengine'])[0]][xlabel
 tmp_col2 = dfs[1][dfs[1]['ioengine'] == np.unique(dfs[1]['ioengine'])[0]][xlabel[1]]
 tmp_col3 = dfs[2][dfs[2]['ioengine'] == np.unique(dfs[2]['ioengine'])[0]][xlabel[2]]
 
-#More Safety Checks
+### More Safety Checks
 if len(tmp_col1) < 2:
     raise Exception('The chosen \'-x1\' has less than 2 values for an ioengine in the DataFrame')
 elif len(tmp_col2) < 2:
@@ -427,19 +478,14 @@ elif no_unique_values(tmp_col2):
 elif no_unique_values(tmp_col3):
     raise Exception('The chosen \'-x3\' has no unique values for an ioengine in the DataFrame')
     
-#Beginning of the graph setup
+### Beginning of the graph setup
 fig, axes = plt.subplots(1, 3, figsize=tuple(args.figsize))
 
-axes[0].spines['top'].set_visible(False)
-axes[0].spines['right'].set_visible(False)
-axes[0].yaxis.set_major_formatter(FuncFormatter(my_format))
-axes[1].spines['top'].set_visible(False)
-axes[1].spines['right'].set_visible(False)
-axes[1].yaxis.set_major_formatter(FuncFormatter(my_format))
-axes[2].spines['top'].set_visible(False)
-axes[2].spines['right'].set_visible(False)
-axes[2].yaxis.set_major_formatter(FuncFormatter(my_format))
-Markers = {'spdk cpoll':'$♦$', 'pvsync2 cpoll':'$■$', 'libaio int':'$+$', 'pvsync2 int':'$□$', 'io_uring int':'$△$', 'io_uring cpoll':'$▲$', 'io_uring spoll':'$⃝$', 'io_uring both':'o', 'posixaio int':'x'}
+for x in range(3):
+    axes[x].spines['top'].set_visible(False)
+    axes[x].spines['right'].set_visible(False)
+    axes[x].yaxis.set_major_formatter(FuncFormatter(my_format))
+    axes[x].set_box_aspect(args.aspect_ratio)
 
 try:
     for x in range(3):
@@ -459,8 +505,7 @@ except:
     axes[1].set_xscale('log', base=2)
     axes[2].set_xscale('log', base=2)
 
-#Plotting
-
+### Plotting
 for x in range(3):
     for ioengine, group in dfs[x].groupby('ioengine'):
         f = group.sort_values(xlabel[x])
@@ -468,37 +513,36 @@ for x in range(3):
             style_grey = std.get_style(ioengine, args.grey)
             if args.grey:
                 style_grey['color'] = std.convert_greyscale(*style_grey.get('color'))
-            
-            axes[x].plot(f[xlabel[x]], f[ylabel[x]], marker=Markers.get(ioengine), markersize=4, label=std.get_label(ioengine), **std.get_style(ioengine, args.grey))
+            try:
+                axes[x].plot(f[xlabel[x]], f[ylabel[x]], marker=std.Markers.get(ioengine), markersize=4, label=std.get_label(ioengine), **std.get_style(ioengine, args.grey))
+            except:
+                axes[x].plot(f[xlabel[x]], f[ylabel[x]], marker=Markers.get(ioengine), markersize=4, label=std.get_label(ioengine), **std.get_style(ioengine, args.grey))
         except:
             style_grey = get_style(ioengine, args.grey)
             if args.grey:
                 style_grey['color'] = convert_greyscale(*style_grey.get('color'))
 
-            axes[x].plot(f[xlabel[x]], f[ylabel[x]], marker=Markers.get(ioengine), markersize=4, label=get_label(ioengine), **style_grey)
-        
+            try:
+                axes[x].plot(f[xlabel[x]], f[ylabel[x]], marker=std.Markers.get(ioengine), markersize=4, label=get_label(ioengine), **style_grey)
+            except:
+                axes[x].plot(f[xlabel[x]], f[ylabel[x]], marker=Markers.get(ioengine), markersize=4, label=get_label(ioengine), **style_grey)
+                
         if(ylabel[x] == 'watts_mean'):
             axes[x].set_ylim(40, dfs[x][ylabel[x]].max() * 1.05)
         else:
             axes[x].set_ylim(0, dfs[x][ylabel[x]].max() * 1.05)
 
-#Adding final graph settings
-axes[0].grid(axis='both', ls='--', alpha=0.2)
-axes[1].grid(axis='both', ls='--', alpha=0.2)
-axes[2].grid(axis='both', ls='--', alpha=0.2)
+### Adding final graph settings
+x_ticks = [np.sort(dfs[0][xlabel[0]].unique()), np.sort(dfs[1][xlabel[1]].unique()), np.sort(dfs[2][xlabel[2]].unique())]
 
-X_ticks1 = np.sort(dfs[0][xlabel[0]].unique())
-X_ticks2 = np.sort(dfs[1][xlabel[1]].unique())
-X_ticks3 = np.sort(dfs[2][xlabel[2]].unique())
+titles = [args.t1, args.t2, args.t3]
+for x in range(3):
+    axes[x].grid(axis='both', ls='--', alpha=0.2)
+    axes[x].xaxis.set_major_formatter(ScalarFormatter())
+    axes[x].set_xticks(x_ticks[x])
 
-axes[0].xaxis.set_major_formatter(ScalarFormatter())
-axes[1].xaxis.set_major_formatter(ScalarFormatter())
-axes[2].xaxis.set_major_formatter(ScalarFormatter())
-#ax.spines.bottom.set_bounds(df[x_label].min(), df[x_label].max())
-
-axes[0].set_xticks(X_ticks1)
-axes[1].set_xticks(X_ticks2)
-axes[2].set_xticks(X_ticks3)
+    if titles[x]:
+        axes[x].set_title(titles[x])
 
 axes[1].legend(loc=args.legend_loc, bbox_to_anchor=args.legend_bbox_to_anchor, labelspacing=0.15, handletextpad=0.15, frameon=False, fancybox=False, shadow=False, ncol=ceil(len(np.unique(df['ioengine'])) / 2))
 
@@ -508,6 +552,5 @@ plt.subplots_adjust(wspace=args.subplots_wspace)
 if args.output:
     plt.savefig(args.output, bbox_inches='tight', transparent=True)
 else:
-    print('\n\n***LEGEND WILL NOT SHOW CORRECTLY UNLESS SAVED***\n\n')
+    print('\n\n***LEGEND MIGHT NOT SHOW CORRECTLY UNLESS SAVED***\n\n')
     plt.show()
-
