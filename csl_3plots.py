@@ -427,6 +427,7 @@ else:
         if xlabel[0] == 'numjobs' or xlabel[0] == 'iodepth':  xlabel[0] += '_parsed'
         if ylabel[0] == 'numjobs' or ylabel[0] == 'iodepth':  ylabel[0] += '_parsed'        
         preset1 = False
+        
     if args.x2 and args.y2:
         if args.x2 not in dfs[1].columns.values:
             raise Exception('Chosen \'-x2\' value is not a column in the supplied dataset.')
@@ -469,7 +470,7 @@ if len(tmp_col1) < 2:
     raise Exception('The chosen \'-x1\' has less than 2 values for an ioengine in the DataFrame')
 elif len(tmp_col2) < 2:
     raise Exception('The chosen \'-x2\' has less than 2 values for an ioengine in the DataFrame')
-elif len(tmp_col2) < 3:
+elif len(tmp_col3) < 3:
     raise Exception('The chosen \'-x3\' has less than 2 values for an ioengine in the DataFrame')
 elif no_unique_values(tmp_col1):
     raise Exception('The chosen \'-x1\' has no unique values for an ioengine in the DataFrame')
