@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+Markers = {'spdk cpoll':'$♦$', 'pvsync2 cpoll':'$■$', 'libaio int':'$+$', 'pvsync2 int':'$□$', 'io_uring int':'$△$', 'io_uring cpoll':'$▲$', 'io_uring spoll':'$⃝$', 'io_uring both':'o', 'posixaio int':'x'}
+
 ioengine_color = {
     'spdk': '#88CCEE', #Cyan
     'io_uring': '#44AA99', #Teal
@@ -24,6 +26,12 @@ specific_style = {
     'io_uring both': { 'lw': 1.2, 'ls': '-', 'color': '#CC6677'}, #Purple
     'io_uring spoll': { 'lw': 1.2, 'ls': '--', 'color': '#CC6677'}, #Purple
     'io_uring sqpoll': { 'lw': 1.2, 'ls': '-', 'color': '#CC6677'}, #Purple
+}
+
+specific_style_greyscale = {
+    'io_uring both': { 'lw': 1.2, 'ls': '-', 'color': (136/255, 34/255, 85/255)}, #Purple
+    'io_uring spoll': { 'lw': 1.2, 'ls': '--', 'color': (136/255, 34/255, 85/255)}, #Purple
+    'io_uring sqpoll': { 'lw': 1.2, 'ls': '-', 'color': (136/255, 34/255, 85/255)}, #Purple
 }
 
 feature_remap = {
@@ -81,14 +89,28 @@ feature_unit = {
     'cpu_total': 'cores',
 }
 
-def get_style(name):
+ioengine_rgb_colors = {
+    'spdk': (136/255, 204/255, 238/255), #Cyan
+    'io_uring': (68/255, 170/255, 153/255), #Teal
+    'pvsync2': (51/255, 34/255, 136/255), #Indigo
+    'libaio': (221/255, 204/255, 119/255), #Sand
+    'posixaio': (136/255, 34/255, 85/255), #Wine
+}
+
+def get_style(name, gscale=False):
     if name in specific_style:
-        return specific_style[name]
+        if gscale:
+            return specific_style_greyscale[name]
+        else:
+            return specific_style[name]
 
     color = ioengine_color[None]
     for ioengine in ioengine_color:
         if ioengine and ioengine in name:
-            color = ioengine_color[ioengine]
+            if gscale:
+                color = ioengine_rgb_colors[ioengine]
+            else:
+                color = ioengine_color[ioengine]
             break
 
     ls = completion_ls[None]
