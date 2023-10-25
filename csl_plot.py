@@ -108,7 +108,17 @@ except:
         'libaio': (221/255, 204/255, 119/255), #Sand
         'posixaio': (136/255, 34/255, 85/255), #Wine
     }
+
+    fs_ioengine_colors = {
+        'xfs': 'C2',
+        'ext4': 'C0',
+        'f2fs': 'C1'
+    }
     
+    def get_fs_style(fs):
+        color = fs_ioengine_colors.get(fs)
+        return { 'lw': 1.2, 'ls': '-', 'color': color }
+            
     def get_style(name, gscale=False):
         if name in specific_style:
             if gscale:
@@ -199,6 +209,93 @@ def parse_name_col(df):
 
     return df.join(parsed_name, rsuffix='_parsed')
 
+def no_unique_values(col):
+    """
+    Simple check if a DataFrame column has unique values
+    """
+    tmp = col.to_numpy()
+    return (tmp[0] == tmp).all()
+
+def safety_checks(df, args):
+    """
+    Performs script configuration safety checks.
+    
+    Is called by the 'filter_and_safety' function.
+    """
+    x_label = None
+    y_label = None
+    preset = True
+    if bool(args.x) ^ bool(args.y):
+        raise Exception('Either use both -x and -y or neither')
+    else:
+        if args.x and args.y:
+            if args.x not in df.columns.values:
+                raise Exception('Chosen \'-x\' value is not a column in the supplied dataset.')
+            elif args.y not in df.columns.values:
+                raise Exception('Chosen \'-y\' value is not a column in the supplied dataset.')
+            
+            x_label, y_label = args.x, args.y
+            if x_label == 'numjobs' or x_label == 'iodepth':  x_label += '_parsed'
+            if y_label == 'numjobs' or y_label == 'iodepth':  y_label += '_parsed'        
+            preset = False
+        elif args.preset:
+            x_label, y_label = args.px, args.preset
+        else:
+            raise Exception('You broke something!')
+
+    tmp_col = df[df['ioengine'] == np.unique(df['ioengine'])[0]][x_label]
+
+    #More Safety Checks
+    if len(tmp_col) < 2:
+        raise Exception('The chosen \'-x\' has less than 2 values for an ioengine in the DataFrame')
+    elif no_unique_values(tmp_col):
+        raise Exception('The chosen \'-x\' has no unique values for an ioengine in the DataFrame')
+    
+    return df, x_label, y_label
+
+def filter_and_safety(df, args):
+    """
+    Filters data based of options and runs 'safety_checks' function
+    """
+
+    df = df[df.bs == args.bs]
+    if args.fs != 'all':
+        df = df[df.fs == args.fs]
+
+    df, x_label, y_label = safety_checks(df, args)
+
+    if x_label == 'iodepth_parsed':
+        filtered_indices = [list(df.numjobs_parsed == 1)[x] for x in range(len(df))]
+        df = df.loc[filtered_indices].reset_index(drop=True)
+    elif x_label == 'numjobs_parsed':
+        filtered_indices = [list(df.iodepth_parsed == 1)[x] for x in range(len(df))]
+        df = df.loc[filtered_indices].reset_index(drop=True)
+    
+    return df, x_label, y_label
+
+def graph_setup(args, labels):
+    x_label, y_label = labels
+    fig = plt.Figure(figsize=tuple(args.figsize))
+    ax = plt.gca()
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.set_box_aspect(args.aspect_ratio)
+    ax.yaxis.set_major_formatter(FuncFormatter(my_format))
+    
+    try:
+        plt.xlabel(std.get_feature(x_label))
+        plt.ylabel(std.get_feature(y_label))
+    except:
+        plt.xlabel(get_feature(x_label))
+        plt.ylabel(get_feature(y_label))
+
+    try:
+        plt.xscale('log', basex=2)
+    except:
+        plt.xscale('log', base=2)    
+
+    return fig, ax
+
 ###############################################################################################################
 
 parser = argparse.ArgumentParser(prog='CSL Single Plot Generator',
@@ -226,8 +323,15 @@ parser.add_argument('-fs',
                     type=str,
                     default='xfs',
                     nargs='?',                    
-                    choices=['xfs', 'ext4', 'f2fs'],
+                    choices=['xfs', 'ext4', 'f2fs', 'all'],
                     help='Which filesystem specific data is being graphed')
+
+parser.add_argument('-afa', '--all-fs-api',
+                    type=str,
+                    default='io_uring int',
+                    nargs='?',
+                    choices=['io_uring int', 'io_uring cpool', 'io_uring spoll', 'io_uring both', 'pvsync2 int', 'pvsync2 cpoll', 'libaio int', 'spdk cpoll', 'posixaio int'],
+                    help='Which API to graph if -fs=\'all\'')
 
 parser.add_argument('-x',
                     type=str,
@@ -308,7 +412,7 @@ except:
 df = pd.read_csv(args.data_file)
 df = parse_name_col(df)
 
-#Printing columns
+#Special Functionality
 if args.columns:
     for x in np.unique(df.columns.values):
         print(x)
@@ -316,89 +420,47 @@ if args.columns:
 elif args.debug:
     breakpoint()
 
-#Filters
-df = df[df.bs == args.bs]
-df = df[df.fs == args.fs]
-
-#Safety Checks
-preset = True
-if bool(args.x) ^ bool(args.y):
-    raise Exception('Either use both -x and -y or neither')
-else:
-    if args.x and args.y:
-        if args.x not in df.columns.values:
-            raise Exception('Chosen \'-x\' value is not a column in the supplied dataset.')
-        elif args.y not in df.columns.values:
-            raise Exception('Chosen \'-y\' value is not a column in the supplied dataset.')
-
-        x_label, y_label = args.x, args.y
-        if x_label == 'numjobs' or x_label == 'iodepth':  x_label += '_parsed'
-        if y_label == 'numjobs' or y_label == 'iodepth':  y_label += '_parsed'        
-        preset = False
-    elif args.preset:
-        x_label, y_label = args.px, args.preset
-    else:
-        raise Exception('You broke something!')
-
-def no_unique_values(col):
-    tmp = col.to_numpy()
-    return (tmp[0] == tmp).all()
-
-tmp_col = df[df['ioengine'] == np.unique(df['ioengine'])[0]][x_label]
-
-#More Safety Checks
-if len(tmp_col) < 2:
-    raise Exception('The chosen \'-x\' has less than 2 values for an ioengine in the DataFrame')
-elif no_unique_values(tmp_col):
-    raise Exception('The chosen \'-x\' has no unique values for an ioengine in the DataFrame')
-    
-#Beginning of the graph setup
-fig = plt.Figure(figsize=tuple(args.figsize))
-ax = plt.gca()
-ax.spines['top'].set_visible(False)
-ax.spines['right'].set_visible(False)
-ax.set_box_aspect(args.aspect_ratio)
-ax.yaxis.set_major_formatter(FuncFormatter(my_format))
-
-try:
-    plt.xlabel(std.get_feature(x_label))
-    plt.ylabel(std.get_feature(y_label))
-except:
-    plt.xlabel(get_feature(x_label))
-    plt.ylabel(get_feature(y_label))
-
-try:
-    plt.xscale('log', basex=2)
-except:
-    plt.xscale('log', base=2)    
+df, x_label, y_label = filter_and_safety(df, args)
+fig, ax = graph_setup(args, (x_label, y_label))
 
 #Plotting
-for ioengine, group in df.groupby('ioengine'):
-    f = group.sort_values(x_label)
-    try:
-        style_grey = std.get_style(ioengine, args.grey)
-        if args.grey:
-            style_grey['color'] = std.convert_greyscale(*style_grey.get('color'))
-
+if args.fs == 'all':
+    df = df[df.ioengine == args.all_fs_api]
+    for fs, group in df.groupby('fs'):
+        f = group.sort_values(x_label)
         try:
-            plt.plot(f[x_label], f[y_label], marker=std.Markers.get(ioengine), markersize=4, label=std.get_label(ioengine), **std.get_style(ioengine, args.grey))
-        except:
-            plt.plot(f[x_label], f[y_label], marker=Markers.get(ioengine), markersize=4, label=std.get_label(ioengine), **std.get_style(ioengine, args.grey))
+            style = std.get_fs_style(fs)
+            #if args.grey:
+            #    style['color'] = std.convert_greyscale(*style.get('color'))
             
-    except:
-        style_grey = get_style(ioengine, args.grey)
-        if args.grey:
-            style_grey['color'] = convert_greyscale(*style_grey.get('color'))
-
-        try:
-            plt.plot(f[x_label], f[y_label], marker=std.Markers.get(ioengine), markersize=4, label=get_label(ioengine), **style_grey)
         except:
-            plt.plot(f[x_label], f[y_label], marker=Markers.get(ioengine), markersize=4, label=get_label(ioengine), **style_grey)
+            style = get_fs_style(fs)
+            #if args.grey:
+            #    style['color'] = convert_greyscale(*style.get('color'))
+
+        plt.plot(f[x_label], f[y_label], label=fs, **style)
+
+else:
+    for ioengine, group in df.groupby('ioengine'):
+        f = group.sort_values(x_label)
+        try:
+            style = std.get_style(ioengine, gscale=args.grey)
+            if args.grey:
+                style['color'] = std.convert_greyscale(*style.get('color'))
+                
+            plt.plot(f[x_label], f[y_label], marker=std.Markers.get(ioengine), markersize=4, label=std.get_label(ioengine), **style)
+
+        except:
+            style = get_style(ioengine, gscale=args.grey)
+            if args.grey:
+                style['color'] = convert_greyscale(*style.get('color'))
+
+            plt.plot(f[x_label], f[y_label], marker=Markers.get(ioengine), markersize=4, label=get_label(ioengine), **style)
         
-    if(y_label == 'watts_mean'):
-        plt.ylim(40, df[y_label].max() * 1.05)
-    else:
-        plt.ylim(0, df[y_label].max() * 1.05)
+if(y_label == 'watts_mean'):
+    plt.ylim(40, df[y_label].max() * 1.05)
+else:
+    plt.ylim(0, df[y_label].max() * 1.05)
 
 #Adding final graph settings
 plt.grid(axis='both', ls='--', alpha=0.2)

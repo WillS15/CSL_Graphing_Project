@@ -108,6 +108,16 @@ except:
         'libaio': (221/255, 204/255, 119/255), #Sand
         'posixaio': (136/255, 34/255, 85/255), #Wine
     }
+
+    fs_ioengine_colors = {
+        'xfs': 'C2',
+        'ext4': 'C0',
+        'f2fs': 'C1'
+    }
+    
+    def get_fs_style(fs):
+        color = fs_ioengine_colors.get(fs)
+        return { 'lw': 1.2, 'ls': '-', 'color': color }
     
     def get_style(name, gscale=False):
         if name in specific_style:
@@ -163,7 +173,6 @@ def my_format(x, pos):
 
 ###############################################################################################################
 
-#Parses the dataframe
 def parse_name_col(df):
     """
     Parse the name column to extract more fields
@@ -198,6 +207,122 @@ def parse_name_col(df):
     parsed_name.loc[parsed_name['ioengine'].str.contains('spdk') == True, 'ioengine'] += ' cpoll'
 
     return df.join(parsed_name, rsuffix='_parsed')
+
+def no_unique_values(col):
+    """
+    Simple check if a DataFrame column has unique values
+    """
+    tmp = col.to_numpy()
+    return (tmp[0] == tmp).all()
+
+def safety_checks(dfs, args):
+    """
+    Performs script configuration safety checks.
+    
+    Is called by the 'filter_and_safety' function.
+    """
+    
+    xlabel = [None] * 2
+    ylabel = [None] * 2
+    
+    preset1 = True
+    preset2 = True
+    if bool(args.x1) ^ bool(args.y1):
+        raise Exception('Either use both -x1 and -y1 or neither')
+    elif bool(args.x2) ^ bool(args.y2):
+        raise Exception('Either use both -x2 and -y2 or neither')
+    else:
+        if args.x1 and args.y1:
+            if args.x1 not in dfs[0].columns.values:
+                raise Exception('Chosen \'-x1\' value is not a column in the supplied dataset.')
+            elif args.y1 not in dfs[0].columns.values:
+                raise Exception('Chosen \'-y1\' value is not a column in the supplied dataset.')
+
+            xlabel[0], ylabel[0] = args.x1, args.y1
+            if xlabel[0] == 'numjobs' or xlabel[0] == 'iodepth':  xlabel[0] += '_parsed'
+            if ylabel[0] == 'numjobs' or ylabel[0] == 'iodepth':  ylabel[0] += '_parsed'        
+            preset1 = False
+        if args.x2 and args.y2:
+            if args.x2 not in dfs[1].columns.values:
+                raise Exception('Chosen \'-x2\' value is not a column in the supplied dataset.')
+            elif args.y2 not in dfs[1].columns.values:
+                raise Exception('Chosen \'-y2\' value is not a column in the supplied dataset.')
+
+            xlabel[1], ylabel[1] = args.x2, args.y2
+            if xlabel[1] == 'numjobs' or xlabel[1] == 'iodepth':  xlabel[1] += '_parsed'
+            if ylabel[1] == 'numjobs' or ylabel[1] == 'iodepth':  ylabel[1] += '_parsed'        
+            preset2 = False
+    
+        if preset1:
+            xlabel[0], ylabel[0] = args.px1, args.preset1
+        if preset2:
+            xlabel[1], ylabel[1] = args.px2, args.preset2
+
+    tmp_col1 = dfs[0][dfs[0]['ioengine'] == np.unique(dfs[0]['ioengine'])[0]][xlabel[0]]
+    tmp_col2 = dfs[1][dfs[1]['ioengine'] == np.unique(dfs[1]['ioengine'])[0]][xlabel[1]]
+
+    #More Safety Checks
+    if len(tmp_col1) < 2:
+        raise Exception('The chosen \'-x1\' has less than 2 values for an ioengine in the DataFrame')
+    elif len(tmp_col2) < 2:
+        raise Exception('The chosen \'-x2\' has less than 2 values for an ioengine in the DataFrame')
+    elif no_unique_values(tmp_col1):
+        raise Exception('The chosen \'-x1\' has no unique values for an ioengine in the DataFrame')
+    elif no_unique_values(tmp_col2):
+        raise Exception('The chosen \'-x2\' has no unique values for an ioengine in the DataFrame')
+
+    return dfs, xlabel, ylabel
+
+def filter_and_safety(df, args):
+    """
+    Filters data based of options and runs 'safety_checks' function
+    """
+
+    dfs = []
+    for bs, fs in [(args.bs1, args.fs1), (args.bs2, args.fs2)]:
+        if fs != 'all':
+            filtered_indices = [list(df.bs == bs)[x] and list(df.fs == fs)[x] for x in range(len(df))]
+        else:
+            filtered_indices = [list(df.bs == bs)[x] for x in range(len(df))]
+        dfs.append(df.loc[filtered_indices].reset_index(drop=True))
+
+    dfs, xlabel, ylabel = safety_checks(dfs, args)
+
+    #Filter by numjobs or iodepth
+    for i, label in enumerate(xlabel):
+        if label == 'iodepth_parsed':
+            filtered_indices = [list(dfs[i].numjobs_parsed == 1)[x] for x in range(len(dfs[i]))]
+            dfs[i] = dfs[i].loc[filtered_indices].reset_index(drop=True)
+        elif label == 'numjobs_parsed':
+            filtered_indices = [list(dfs[i].iodepth_parsed == 1)[x] for x in range(len(dfs[i]))]
+            dfs[i] = dfs[i].loc[filtered_indices].reset_index(drop=True)
+    
+    return dfs, xlabel, ylabel
+
+def graph_setup(axes, labels, args):
+    for x in range(2):
+        axes[x].spines['top'].set_visible(False)
+        axes[x].spines['right'].set_visible(False)
+        axes[x].yaxis.set_major_formatter(FuncFormatter(my_format))
+        axes[x].set_box_aspect(args.aspect_ratio)
+    
+        try:
+            for x in range(2):
+                axes[x].set_xlabel(std.get_feature(xlabels[x]))
+                axes[x].set_ylabel(std.get_feature(ylabels[x]))
+        except:
+            for x in range(2):
+                axes[x].set_xlabel(get_feature(xlabels[x]))
+                axes[x].set_ylabel(get_feature(ylabels[x]))
+        
+    try:
+        axes[0].set_xscale('log', basex=2)
+        axes[1].set_xscale('log', basex=2)
+    except:
+        axes[0].set_xscale('log', base=2)
+        axes[1].set_xscale('log', base=2)    
+
+    return axes
 
 ###############################################################################################################
 
@@ -239,15 +364,29 @@ parser.add_argument('-fs1',
                     type=str,
                     default='xfs',
                     nargs='?',
-                    choices=['xfs', 'ext4', 'f2fs'],
+                    choices=['xfs', 'ext4', 'f2fs', 'all'],
                     help='Which filesystem specific data is being graphed (1st Plot)')
 
 parser.add_argument('-fs2',
                     type=str,
                     default='xfs',
                     nargs='?',
-                    choices=['xfs', 'ext4', 'f2fs'],
+                    choices=['xfs', 'ext4', 'f2fs', 'all'],
                     help='Which filesystem specific data is being graphed (2nd Plot)')
+
+parser.add_argument('-afa1', '--all-fs-api1',
+                    type=str,
+                    default='io_uring int',
+                    nargs='?',
+                    choices=['io_uring int', 'io_uring cpool', 'io_uring spoll', 'io_uring both', 'pvsync2 int', 'pvsync2 cpoll', 'libaio int', 'spdk cpoll', 'posixaio int'],
+                    help='Which API to graph if -fs1=\'all\'')
+
+parser.add_argument('-afa2', '--all-fs-api2',
+                    type=str,
+                    default='io_uring int',
+                    nargs='?',
+                    choices=['io_uring int', 'io_uring cpool', 'io_uring spoll', 'io_uring both', 'pvsync2 int', 'pvsync2 cpoll', 'libaio int', 'spdk cpoll', 'posixaio int'],
+                    help='Which API to graph if -fs2=\'all\'')
 
 parser.add_argument('-x1',
                     type=str,
@@ -351,7 +490,7 @@ except:
 df = pd.read_csv(args.data_file)
 df = parse_name_col(df)
 
-#Printing columns
+#Special Functionality
 if args.columns:
     for x in np.unique(df.columns.values):
         print(x)
@@ -359,123 +498,59 @@ if args.columns:
 elif args.debug:
     breakpoint()
 
-#Filter by bs and fs
-dfs = []
-for bs, fs in [(args.bs1, args.fs1), (args.bs2, args.fs2)]:
-    filtered_indices = [list(df.bs == bs)[x] and list(df.fs == fs)[x] for x in range(len(df))]
-    dfs.append(df.loc[filtered_indices].reset_index(drop=True))
+dfs, xlabels, ylabels = filter_and_safety(df, args)
 
-xlabel = [None] * 2
-ylabel = [None] * 2
-
-#Safety Checks
-preset1 = True
-preset2 = True
-if bool(args.x1) ^ bool(args.y1):
-    raise Exception('Either use both -x1 and -y1 or neither')
-elif bool(args.x2) ^ bool(args.y2):
-    raise Exception('Either use both -x2 and -y2 or neither')
-else:
-    if args.x1 and args.y1:
-        if args.x1 not in dfs[0].columns.values:
-            raise Exception('Chosen \'-x1\' value is not a column in the supplied dataset.')
-        elif args.y1 not in dfs[0].columns.values:
-            raise Exception('Chosen \'-y1\' value is not a column in the supplied dataset.')
-
-        xlabel[0], ylabel[0] = args.x1, args.y1
-        if xlabel[0] == 'numjobs' or xlabel[0] == 'iodepth':  xlabel[0] += '_parsed'
-        if ylabel[0] == 'numjobs' or ylabel[0] == 'iodepth':  ylabel[0] += '_parsed'        
-        preset1 = False
-    if args.x2 and args.y2:
-        if args.x2 not in dfs[1].columns.values:
-            raise Exception('Chosen \'-x2\' value is not a column in the supplied dataset.')
-        elif args.y2 not in dfs[1].columns.values:
-            raise Exception('Chosen \'-y2\' value is not a column in the supplied dataset.')
-
-        xlabel[1], ylabel[1] = args.x2, args.y2
-        if xlabel[1] == 'numjobs' or xlabel[1] == 'iodepth':  xlabel[1] += '_parsed'
-        if ylabel[1] == 'numjobs' or ylabel[1] == 'iodepth':  ylabel[1] += '_parsed'        
-        preset2 = False
-    
-    if preset1:
-        xlabel[0], ylabel[0] = args.px1, args.preset1
-    if preset2:
-        xlabel[1], ylabel[1] = args.px2, args.preset2
-
-def no_unique_values(col):
-    tmp = col.to_numpy()
-    return (tmp[0] == tmp).all()
-
-tmp_col1 = dfs[0][dfs[0]['ioengine'] == np.unique(dfs[0]['ioengine'])[0]][xlabel[0]]
-tmp_col2 = dfs[1][dfs[1]['ioengine'] == np.unique(dfs[1]['ioengine'])[0]][xlabel[1]]
-
-#More Safety Checks
-if len(tmp_col1) < 2:
-    raise Exception('The chosen \'-x1\' has less than 2 values for an ioengine in the DataFrame')
-elif len(tmp_col2) < 2:
-    raise Exception('The chosen \'-x2\' has less than 2 values for an ioengine in the DataFrame')
-elif no_unique_values(tmp_col1):
-    raise Exception('The chosen \'-x1\' has no unique values for an ioengine in the DataFrame')
-elif no_unique_values(tmp_col2):
-    raise Exception('The chosen \'-x2\' has no unique values for an ioengine in the DataFrame')
-    
-#Beginning of the graph setup
 fig, axes = plt.subplots(1, 2, figsize=tuple(args.figsize))
-
-for x in range(2):
-    axes[x].spines['top'].set_visible(False)
-    axes[x].spines['right'].set_visible(False)
-    axes[x].yaxis.set_major_formatter(FuncFormatter(my_format))
-    axes[x].set_box_aspect(args.aspect_ratio)
-    
-try:
-    for x in range(2):
-        axes[x].set_xlabel(std.get_feature(xlabel[x]))
-        axes[x].set_ylabel(std.get_feature(ylabel[x]))
-except:
-    for x in range(2):
-        axes[x].set_xlabel(get_feature(xlabel[x]))
-        axes[x].set_ylabel(get_feature(ylabel[x]))
-        
-try:
-    axes[0].set_xscale('log', basex=2)
-    axes[1].set_xscale('log', basex=2)
-except:
-    axes[0].set_xscale('log', base=2)
-    axes[1].set_xscale('log', base=2)    
+axes = graph_setup(axes, (xlabels, ylabels), args)
 
 #Plotting
+filesystems = (args.fs1, args.fs2)
 
 for x in range(2):
-    for ioengine, group in dfs[x].groupby('ioengine'):
-        f = group.sort_values(xlabel[x]).reset_index(drop=True)
-        try:
-            style_grey = std.get_style(ioengine, args.grey)
-            if args.grey:
-                style_grey['color'] = std.convert_greyscale(*style_grey.get('color'))
+    if filesystems[x] == 'all':
+        fs_api_choice = (args.all_fs_api1, args.all_fs_api2)
+        dfs[x] = dfs[x][dfs[x].ioengine == fs_api_choice[x]]
+        ioengine = dfs[x].ioengine[0]
+
+        for fs, group in dfs[x].groupby('fs'):
+            f = group.sort_values(xlabels[x]).reset_index(drop=True)
             
             try:
-                axes[x].plot(f[xlabel[x]], f[ylabel[x]], marker=std.Markers.get(ioengine), markersize=4, label=std.get_label(ioengine), **std.get_style(ioengine, args.grey))
-            except:
-                axes[x].plot(f[xlabel[x]], f[ylabel[x]], marker=Markers.get(ioengine), markersize=4, label=std.get_label(ioengine), **std.get_style(ioengine, args.grey))
+                style = std.get_fs_style(fs)
+                #if args.grey:
+                #    style['color'] = std.convert_greyscale(*style.get('color'))
                 
-        except:
-            style_grey = get_style(ioengine, args.grey)
-            if args.grey:
-                style_grey['color'] = convert_greyscale(*style_grey.get('color'))
-
-            try:
-                axes[x].plot(f[xlabel[x]], f[ylabel[x]], marker=std.Markers.get(ioengine), markersize=4, label=get_label(ioengine), **style_grey)
             except:
-                axes[x].plot(f[xlabel[x]], f[ylabel[x]], marker=Markers.get(ioengine), markersize=4, label=get_label(ioengine), **style_grey)
+                style = get_fs_style(fs)
+                #if args.grey:
+                #    style['color'] = convert_greyscale(*style.get('color'))
+
+            axes[x].plot(f[xlabels[x]], f[ylabels[x]], label=fs, **style)
         
-        if(ylabel[x] == 'watts_mean'):
-            axes[x].set_ylim(40, dfs[x][ylabel[x]].max() * 1.05)
-        else:
-            axes[x].set_ylim(0, dfs[x][ylabel[x]].max() * 1.05)
+    else:
+        for ioengine, group in dfs[x].groupby('ioengine'):
+            f = group.sort_values(xlabels[x]).reset_index(drop=True)
+            try:
+                style = std.get_style(ioengine, gscale=args.grey)
+                if args.grey:
+                    style['color'] = std.convert_greyscale(*style.get('color'))
+                
+                axes[x].plot(f[xlabels[x]], f[ylabels[x]], marker=std.Markers.get(ioengine), markersize=4, label=std.get_label(ioengine), **std.get_style(ioengine, gscale=args.grey))
+                
+            except:
+                style = get_style(ioengine, gscale=args.grey)
+                if args.grey:
+                    style['color'] = convert_greyscale(*style.get('color'))
+
+                axes[x].plot(f[xlabels[x]], f[ylabels[x]], marker=Markers.get(ioengine), markersize=4, label=get_label(ioengine), **style)
+                
+    if(ylabels[x] == 'watts_mean'):
+        axes[x].set_ylim(40, dfs[x][ylabels[x]].max() * 1.05)
+    else:
+        axes[x].set_ylim(0, dfs[x][ylabels[x]].max() * 1.05)
             
 #Adding final graph settings
-x_ticks = [np.sort(dfs[0][xlabel[0]].unique()), np.sort(dfs[1][xlabel[1]].unique())]
+x_ticks = [np.sort(dfs[0][xlabels[0]].unique()), np.sort(dfs[1][xlabels[1]].unique())]
 
 titles = [args.t1, args.t2]
 for x in range(2):

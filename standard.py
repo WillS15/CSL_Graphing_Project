@@ -97,16 +97,26 @@ ioengine_rgb_colors = {
     'posixaio': (136/255, 34/255, 85/255), #Wine
 }
 
+fs_ioengine_colors = {
+    'xfs': 'C2',
+    'ext4': 'C0',
+    'f2fs': 'C1'
+}
+
+def get_fs_style(fs):
+    color = fs_ioengine_colors.get(fs)
+    return { 'lw': 1.2, 'ls': '-', 'color': color }
+    
 def get_style(name, gscale=False):
     if name in specific_style:
         if gscale:
             return specific_style_greyscale[name]
         else:
             return specific_style[name]
-
+        
     color = ioengine_color[None]
     for ioengine in ioengine_color:
-        if ioengine and ioengine in name:
+        if ioengine in name:
             if gscale:
                 color = ioengine_rgb_colors[ioengine]
             else:
@@ -115,10 +125,10 @@ def get_style(name, gscale=False):
 
     ls = completion_ls[None]
     for ls in completion_ls:
-        if ls and ls in name:
+        if ls in name:
             ls = completion_ls[ls]
             break
-    return { 'lw': 1.2, 'ls': ls, 'color': color, }
+    return { 'lw': 1.2, 'ls': ls, 'color': color}
 
 def get_feature_unit(feature):
     return feature_unit.get(feature, '')
@@ -131,3 +141,7 @@ def get_feature(feature):
 
 def get_label(feature):
     return legend_remap.get(feature, feature)
+
+def convert_greyscale(r, g, b):
+        a = float(0.299*r) + float(0.587*g) + float(0.114*b)
+        return str(round(a, 4))
